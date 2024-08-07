@@ -41,7 +41,7 @@ var ErrNoMatch = errors.New("no match")
 var (
 	emailRegexp    = regexp.MustCompile(`\A[A-Z0-9a-z\._%\+\-]+@[A-Za-z0-9\.\-]+\.[A-Za-z]{2,6}\z`)
 	teamRegexp     = regexp.MustCompile(`\A@([a-zA-Z0-9\-]+\/[a-zA-Z0-9_\-]+)\z`)
-	usernameRegexp = regexp.MustCompile(`\A@([a-zA-Z0-9\-_]+)\z`)
+	usernameRegexp = regexp.MustCompile(`\A@([a-zA-Z0-9\.\-_]+)\z`)
 )
 
 // DefaultOwnerMatchers is the default set of owner matchers, which includes the
@@ -106,6 +106,7 @@ func ParseFile(f io.Reader, options ...parseOption) (Ruleset, error) {
 	rules := Ruleset{}
 	scanner := bufio.NewScanner(f)
 	lineNo := 0
+	section := &Section{}
 	for scanner.Scan() {
 		lineNo++
 		line := strings.TrimSpace(scanner.Text())
@@ -115,10 +116,25 @@ func ParseFile(f io.Reader, options ...parseOption) (Ruleset, error) {
 			continue
 		}
 
+		// Parse Gitlab sections.
+		if strings.HasPrefix(line, "[") || strings.HasPrefix(line, "^[") {
+			var err error
+			section, err = parseSection(line, opts)
+			if err != nil {
+				return nil, fmt.Errorf("line %d: failed to parse section: %w", lineNo, err)
+			}
+
+			// Don't attempt to parse as a rule.
+			continue
+		}
+
 		rule, err := parseRule(line, opts)
 		if err != nil {
 			return nil, fmt.Errorf("line %d: %w", lineNo, err)
 		}
+
+		addFromSection(&rule, section)
+
 		rule.LineNumber = lineNo
 		rules = append(rules, rule)
 	}
